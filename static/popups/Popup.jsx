@@ -12,6 +12,7 @@ import { Describe } from "./Describe";
 import { Histogram } from "./Histogram";
 import Instances from "./Instances";
 import { Charts } from "./charts/Charts";
+import { CreateColumn } from "./create/CreateColumn";
 
 class ReactPopup extends React.Component {
   constructor(props) {
@@ -33,13 +34,14 @@ class ReactPopup extends React.Component {
     let body = null;
     const { chartData } = this.props;
     const { type, title, visible, size, backdrop } = chartData;
+    const onClose = () => this.props.onClose({ size: size || "modal-lg" });
     switch (type) {
       case "histogram":
         modalTitle = (
           <ModalTitle>
             <i className="ico-equalizer" />
             {" Histogram for "}
-            <strong>{title}</strong>
+            <strong>{chartData.selectedCol}</strong>
             <div id="describe" />
           </ModalTitle>
         );
@@ -61,7 +63,16 @@ class ReactPopup extends React.Component {
             <strong>{"Describe"}</strong>
           </ModalTitle>
         );
-        body = <Describe />;
+        body = <Describe onClose={onClose} />;
+        break;
+      case "build":
+        modalTitle = (
+          <ModalTitle>
+            <i className="ico-build" />
+            <strong>{"Build Column"}</strong>
+          </ModalTitle>
+        );
+        body = <CreateColumn onClose={onClose} />;
         break;
       case "about":
         modalTitle = (
@@ -93,7 +104,6 @@ class ReactPopup extends React.Component {
       default:
         break;
     }
-    const onClose = () => this.props.onClose({ size: size || "modal-lg" });
     return (
       <Modal
         {...{
@@ -121,6 +131,7 @@ ReactPopup.propTypes = {
     title: PropTypes.string,
     size: PropTypes.string,
     backdrop: PropTypes.bool,
+    selectedCol: PropTypes.string,
   }),
   propagateState: PropTypes.func,
 };

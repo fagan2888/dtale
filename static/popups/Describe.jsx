@@ -1,16 +1,21 @@
 import _ from "lodash";
 import PropTypes from "prop-types";
 import React from "react";
+import { ModalFooter } from "react-modal-bootstrap";
 import { connect } from "react-redux";
 
 import { BouncerWrapper } from "../BouncerWrapper";
 import { RemovableError } from "../RemovableError";
+import actions from "../actions/dtale";
 import chartUtils from "../chartUtils";
 import { fetchJson } from "../fetcher";
 import { DtypesGrid } from "./describe/DtypesGrid";
 
-const DTYPES_URL = "/dtale/dtypes";
 const BASE_DESCRIBE_URL = "/dtale/describe";
+
+function dtypesUrl(dataId) {
+  return `/dtale/dtypes/${dataId}`;
+}
 
 class ReactDescribe extends React.Component {
   constructor(props) {
@@ -29,7 +34,7 @@ class ReactDescribe extends React.Component {
   }
 
   componentDidMount() {
-    fetchJson(`${DTYPES_URL}/${this.props.dataId}`, dtypesData => {
+    fetchJson(dtypesUrl(this.props.dataId), dtypesData => {
       const newState = {
         error: null,
         detailError: null,
@@ -44,7 +49,7 @@ class ReactDescribe extends React.Component {
       newState.dtypes = dtypesData.dtypes;
       let callback = _.noop;
       if (dtypesData.dtypes.length) {
-        let selectedRow = _.find(dtypesData.dtypes, ({ name }) => name === this.props.chartData.col);
+        let selectedRow = _.find(dtypesData.dtypes, ({ name }) => name === this.props.chartData.selectedCol);
         if (_.isUndefined(selectedRow)) {
           selectedRow = _.head(dtypesData.dtypes);
         }
@@ -195,12 +200,27 @@ class ReactDescribe extends React.Component {
         </div>
       );
     }
-    return (
+    const save = () => {
+      const visibility = _.reduce(this._grid.state.dtypes, (ret, d) => _.assignIn(ret, { [d.name]: d.visible }), {});
+      const vizzCallback = () => {
+        if (_.startsWith(window.location.pathname, "/dtale/popup/describe")) {
+          window.opener.location.reload();
+        } else {
+          const updatedColumns = _.map(this.props.chartData.columns, c =>
+            _.assignIn({}, c, { visible: _.get(visibility, c.name, true) })
+          );
+          this.props.chartData.propagateState({ columns: updatedColumns }, this.props.onClose);
+        }
+      };
+      actions.updateVisibility(this.props.dataId, visibility, vizzCallback);
+    };
+    return [
       <div key="body" className="modal-body">
         <div className="row">
           <div className="col-md-5">
             <BouncerWrapper showBouncer={this.state.loadingDtypes}>
               <DtypesGrid
+                ref={mg => (this._grid = mg)}
                 dtypes={this.state.dtypes}
                 rowClick={this.loadDetails}
                 selected={_.get(this.state, "details.name")}
@@ -211,8 +231,13 @@ class ReactDescribe extends React.Component {
             <BouncerWrapper showBouncer={this.state.loadingDetails}>{this.renderDetails()}</BouncerWrapper>
           </div>
         </div>
-      </div>
-    );
+      </div>,
+      <ModalFooter key="footer">
+        <button className="btn btn-primary" onClick={save}>
+          <span>Update Grid</span>
+        </button>
+      </ModalFooter>,
+    ];
   }
 }
 ReactDescribe.displayName = "ReactDescribe";
@@ -220,13 +245,14 @@ ReactDescribe.propTypes = {
   dataId: PropTypes.string.isRequired,
   chartData: PropTypes.shape({
     visible: PropTypes.bool.isRequired,
-    col: PropTypes.string,
-    query: PropTypes.string,
+    selectedCol: PropTypes.string,
+    columns: PropTypes.arrayOf(PropTypes.object),
+    propagateState: PropTypes.func,
   }),
-  height: PropTypes.number,
+  onClose: PropTypes.func,
 };
-ReactDescribe.defaultProps = { height: 400 };
+ReactDescribe.defaultProps = { onClose: _.noop };
 
 const ReduxDescribe = connect(state => _.pick(state, ["dataId", "chartData"]))(ReactDescribe);
 
-export { ReactDescribe, ReduxDescribe as Describe };
+export { ReactDescribe, ReduxDescribe as Describe, dtypesUrl };

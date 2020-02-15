@@ -77,16 +77,20 @@ function buildDataProps({ name, dtype }, rawValue, { columnFormats }) {
   };
 }
 
-function getActiveCols({ columns }) {
-  return _.filter(columns || [], { visible: true });
+function getHeatActive(column) {
+  return (_.has(column, "min") || column.name === IDX) && column.visible;
 }
 
-function getCol(index, { columns }) {
-  return _.get(getActiveCols({ columns }), index, {});
+function getActiveCols({ columns, heatMapMode }) {
+  return _.filter(columns || [], c => (heatMapMode ? getHeatActive(c) : c.visible));
 }
 
-function getColWidth(index, { columns }) {
-  return _.get(getCol(index, { columns }), "width", DEFAULT_COL_WIDTH);
+function getCol(index, { columns, heatMapMode }) {
+  return _.get(getActiveCols({ columns, heatMapMode }), index, {});
+}
+
+function getColWidth(index, { columns, heatMapMode }) {
+  return _.get(getCol(index, { columns, heatMapMode }), "width", DEFAULT_COL_WIDTH);
 }
 
 function getRanges(array) {
@@ -162,21 +166,6 @@ function buildGridStyles(headerHeight = HEADER_HEIGHT) {
   };
 }
 
-function toggleHeatMap({ columns, heatMapMode }) {
-  const toggledHeatMapMode = !heatMapMode;
-  if (toggledHeatMapMode) {
-    const isHeated = c => c.locked || _.has(c, "min");
-    return {
-      heatMapMode: toggledHeatMapMode,
-      columns: _.map(columns, c => _.assignIn({}, c, { visible: isHeated(c) })),
-    };
-  }
-  return {
-    heatMapMode: toggledHeatMapMode,
-    columns: _.map(columns, c => _.assignIn({}, c, { visible: true })),
-  };
-}
-
 const heatMap = chroma.scale(["red", "yellow", "green"]).domain([0, 0.5, 1]);
 
 function heatMapBackground({ raw, view }, { min, max }) {
@@ -249,7 +238,6 @@ export {
   buildGridStyles,
   ROW_HEIGHT,
   HEADER_HEIGHT,
-  toggleHeatMap,
   heatMapBackground,
   SORT_PROPS,
   buildToggleId,

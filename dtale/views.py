@@ -293,7 +293,7 @@ class DtaleData(object):
             logger.debug('You must ipython>=5.0 installed to use this functionality')
 
 
-def build_dtypes_state(data):
+def build_dtypes_state(data, prev_state=None):
     """
     Helper function to build globally managed state pertaining to a D-Tale instances columns & data types
 
@@ -302,11 +302,13 @@ def build_dtypes_state(data):
     :return: a list of dictionaries containing column names, indexes and data types
     """
     dtypes = get_dtypes(data)
+    prev_dtypes = {c['name']: c for c in prev_state or []}
     ranges = data.agg([min, max]).to_dict()
 
     def _format_dtype(col_index, col):
         dtype = dtypes[col]
-        dtype_data = dict(name=col, dtype=dtype, index=col_index)
+        visible = prev_dtypes[col].get('visible', True) if col in prev_dtypes else True
+        dtype_data = dict(name=col, dtype=dtype, index=col_index, visible=visible)
         if classify_type(dtype) == 'F' and not data[col].isnull().all():  # floats
             col_ranges = ranges[col]
             if not any((np.isnan(v) or np.isinf(v) for v in col_ranges.values())):
@@ -322,6 +324,7 @@ def format_data(data):
      - convert all column names to strings
      - drop any indexes back into the dataframe so what we are left is a natural index [0,1,2,...,n]
      - convert inputs that are indexes into dataframes
+     - replace any periods in column names with underscores
 
     :param data: dataframe to build data type information for
     :type data: :class:`pandas:pandas.DataFrame`
@@ -333,7 +336,7 @@ def format_data(data):
 
     index = [str(i) for i in make_list(data.index.name or data.index.names) if i is not None]
     data = data.reset_index().drop('index', axis=1, errors='ignore')
-    data.columns = [str(c) for c in data.columns]
+    data.columns = ['_'.join(str(c).split('.')) for c in data.columns]
     return data, index
 
 
@@ -389,7 +392,7 @@ def startup(url, data=None, data_loader=None, name=None, data_id=None):
         # in the case that data has been updated we will drop any sorts or filter for ease of use
         SETTINGS[data_id] = dict(locked=curr_locked)
         DATA[data_id] = data
-        DTYPES[data_id] = build_dtypes_state(data)
+        DTYPES[data_id] = build_dtypes_state(data, DTYPES.get(data_id, []))
         return DtaleData(data_id, url)
     else:
         raise Exception('data loaded is None!')
@@ -567,6 +570,79 @@ def update_settings(data_id):
         return jsonify(dict(error=str(e), traceback=str(traceback.format_exc())))
 
 
+def refresh_col_indexes(data_id):
+    global DTYPES
+
+    curr_dtypes = {c['name']: c for c in DTYPES[data_id]}
+    DTYPES[data_id] = [dict_merge(curr_dtypes[c], dict(index=idx)) for idx, c in enumerate(DATA[data_id].columns)]
+
+
+@dtale.route('/update-column-position/<data_id>')
+def update_column_position(data_id):
+    global DATA
+
+    try:
+        action = get_str_arg(request, 'action')
+        col = get_str_arg(request, 'col')
+
+        curr_cols = DATA[data_id].columns.tolist()
+        if action == 'front':
+            curr_cols = [col] + [c for c in curr_cols if c != col]
+        elif action == 'back':
+            curr_cols = [c for c in curr_cols if c != col] + [col]
+        elif action == 'left':
+            if curr_cols[0] != col:
+                col_idx = next((idx for idx, c in enumerate(curr_cols) if c == col), None)
+                col_to_shift = curr_cols[col_idx - 1]
+                curr_cols[col_idx - 1] = col
+                curr_cols[col_idx] = col_to_shift
+        elif action == 'right':
+            if curr_cols[-1] != col:
+                col_idx = next((idx for idx, c in enumerate(curr_cols) if c == col), None)
+                col_to_shift = curr_cols[col_idx + 1]
+                curr_cols[col_idx + 1] = col
+                curr_cols[col_idx] = col_to_shift
+        else:
+            return jsonify(success=True)
+
+        DATA[data_id] = DATA[data_id][curr_cols]
+        refresh_col_indexes(data_id)
+        return jsonify(success=True)
+    except BaseException as e:
+        return jsonify(dict(error=str(e), traceback=str(traceback.format_exc())))
+
+
+@dtale.route('/update-locked/<data_id>')
+def update_locked(data_id):
+    global SETTINGS
+
+    try:
+        action = get_str_arg(request, 'action')
+        col = get_str_arg(request, 'col')
+        if action == 'lock':
+            SETTINGS[data_id]['locked'].append(col)
+        elif action == 'unlock':
+            SETTINGS[data_id]['locked'] = [c for c in SETTINGS[data_id]['locked'] if c != col]
+
+        final_cols = SETTINGS[data_id]['locked'] + [
+            c for c in DATA[data_id].columns if c not in SETTINGS[data_id]['locked']
+        ]
+        DATA[data_id] = DATA[data_id][final_cols]
+        refresh_col_indexes(data_id)
+        return jsonify(success=True)
+    except BaseException as e:
+        return jsonify(dict(error=str(e), traceback=str(traceback.format_exc())))
+
+
+@dtale.route('/update-visibility/<data_id>', methods=['POST'])
+def update_visibility(data_id):
+    global DTYPES
+
+    visibility = json.loads(request.form.get('visibility', '{}'))
+    DTYPES[data_id] = [dict_merge(d, dict(visible=visibility[d['name']])) for d in DTYPES[data_id]]
+    return jsonify(success=True)
+
+
 def _test_filter(data, query):
     """
     Helper function for boolean expression as a query against a :class:`pandas:pandas.DataFrame`
@@ -731,7 +807,7 @@ def get_data(data_id):
         if any(c not in curr_dtypes for c in data.columns):
             data, _ = format_data(data)
             DATA[data_id] = data
-            DTYPES[data_id] = build_dtypes_state(data)
+            DTYPES[data_id] = build_dtypes_state(data, DTYPES.get(data_id, []))
 
         params = retrieve_grid_params(request)
         ids = get_json_arg(request, 'ids')
@@ -769,7 +845,8 @@ def get_data(data_id):
                 sub_df = f.format_dicts(sub_df.itertuples())
                 for i, d in zip(range(start, end + 1), sub_df):
                     results[i] = dict_merge({IDX_COL: i}, d)
-        return_data = dict(results=results, columns=[dict(name=IDX_COL, dtype='int64')] + DTYPES[data_id], total=total)
+        columns = [dict(name=IDX_COL, dtype='int64', visible=True)] + DTYPES[data_id]
+        return_data = dict(results=results, columns=columns, total=total)
         return jsonify(return_data)
     except BaseException as e:
         return jsonify(dict(error=str(e), traceback=str(traceback.format_exc())))

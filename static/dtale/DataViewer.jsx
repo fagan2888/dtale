@@ -125,6 +125,7 @@ class ReactDataViewer extends React.Component {
           rowCount: data.total + 1,
           data: _.assignIn(savedData, formattedData),
           loading: false,
+          heatMapMode,
         };
         const { columns } = this.state;
         if (_.isEmpty(columns)) {
@@ -133,7 +134,6 @@ class ReactDataViewer extends React.Component {
             _.assignIn(
               {
                 locked: _.includes(preLocked, c.name),
-                visible: true,
                 width: gu.calcColWidth(c, newState),
               },
               c
@@ -142,10 +142,7 @@ class ReactDataViewer extends React.Component {
         } else {
           const newCols = _.map(
             _.filter(data.columns, ({ name }) => !_.find(columns, { name })),
-            c => {
-              const visible = heatMapMode ? _.has(c, "min") : true;
-              return _.assignIn({ locked: false, visible, width: gu.calcColWidth(c, newState) }, c);
-            }
+            c => _.assignIn({ locked: false, width: gu.calcColWidth(c, newState) }, c)
           );
           newState.columns = _.concat(columns, newCols);
         }
@@ -187,7 +184,7 @@ class ReactDataViewer extends React.Component {
       if (this.state.heatMapMode) {
         valueStyle = _.assignIn({ background: gu.heatMapBackground(rec, colCfg) }, valueStyle);
       }
-      if (gu.findColType(colCfg.dtype) === "string" && rec.raw !== rec.view) {
+      if (_.includes(["string", "date"], gu.findColType(colCfg.dtype)) && rec.raw !== rec.view) {
         divProps.title = rec.raw;
       }
     }

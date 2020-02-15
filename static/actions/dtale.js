@@ -1,5 +1,7 @@
 import _ from "lodash";
 import querystring from "querystring";
+import $ from "jquery";
+import { logException } from "../fetcher";
 
 function init() {
   return dispatch => dispatch({ type: "init-params" });
@@ -50,4 +52,12 @@ function getParams() {
   return params;
 }
 
-export default { init, toggleColumnMenu, hideColumnMenu, closeColumnMenu, isPopup, getParams };
+function updateVisibility(dataId, visibility, callback) {
+  try {
+    $.post(`/dtale/update-visibility/${dataId}`, { visibility: JSON.stringify(visibility) }, callback);
+  } catch (e) {
+    logException(e, e.stack);
+  }
+}
+
+export default { init, toggleColumnMenu, hideColumnMenu, closeColumnMenu, isPopup, getParams, updateVisibility };

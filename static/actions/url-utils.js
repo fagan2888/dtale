@@ -14,6 +14,7 @@ const URL_KEYS = {
   sortInfo: v => ({ sort: _.isEmpty(v) ? null : JSON.stringify(v) }),
   query: v => ({ query: v }),
   selectedCols: v => ({ cols: _.isEmpty(v) ? null : JSON.stringify(v) }),
+  selectedCol: v => ({ col: v }),
   tsColumns: v => ({ ts_columns: _.isEmpty(v) ? null : JSON.stringify(v) }),
 };
 

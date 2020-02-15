@@ -43,7 +43,7 @@ const props = {
     visible: true,
     type: "histogram",
     title: "Histogram Test",
-    col: "bar",
+    selectedCol: "bar",
     query: "col == 3",
   },
 };
@@ -53,7 +53,7 @@ describe("Histogram tests", () => {
     const urlParams = qs.stringify({
       bins: 20,
       query: props.chartData.query,
-      col: props.chartData.col,
+      selectedCol: props.chartData.col,
     });
     const mockBuildLibs = withGlobalJquery(() =>
       mockPopsicle.mock(url => {
